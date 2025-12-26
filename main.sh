@@ -354,7 +354,6 @@ menu() {
     while true; do
         clear
 
-
         echo -e "=== $(style blink ${COLORS[WHITE]})MENÚ PRINCIPAL${ENDCOLOR} ==="
         echo -e "$(style bold ${COLORS[MAGENTA]})1${ENDCOLOR}) $(style italic ${COLORS[LIGHT_CYAN]})Copia completa${ENDCOLOR}"
         echo -e "$(style bold ${COLORS[MAGENTA]})2${ENDCOLOR}) $(style italic ${COLORS[LIGHT_CYAN]})Copia diferencial${ENDCOLOR}"
