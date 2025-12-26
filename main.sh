@@ -238,6 +238,112 @@ restaurar_backup() {
     sleep 3
 }
 
+# ---------------------------------------------------------------
+# programar_backup
+# Administra tareas automáticas de copias con cron evitando duplicados.
+# Permite crear, listar o eliminar tareas programadas.
+# ---------------------------------------------------------------
+programar_backup() {
+    echo -e "$(style bold ${COLORS[LIGHT_MAGENTA]})[CONFIGURACIÓN DE TAREAS CRON]${ENDCOLOR}"
+    echo -e "1) Añadir nueva tarea"
+    echo -e "2) Ver tareas existentes"
+    echo -e "3) Eliminar una tarea programada"
+    echo -e "0) Volver al menú principal"
+
+    prompt_color "$(style bold ${COLORS[WHITE]})Opción: ${ENDCOLOR}" accion
+    echo ""
+
+    local script_path
+    script_path=$(realpath "$0")
+
+    case "$accion" in
+      # -------------------------------------- #
+      1) # AÑADIR TAREA NUEVA
+          echo -e "$(style italic ${COLORS[LIGHT_CYAN]})Selecciona el tipo de copia:${ENDCOLOR}"
+          echo "1) Completa"
+          echo "2) Diferencial"
+          echo "3) Incremental"
+          prompt_color "$(style bold ${COLORS[WHITE]})Tipo: ${ENDCOLOR}" tipo_copia
+
+          case $tipo_copia in
+              1) tipo="copia_completa" ;;
+              2) tipo="copia_diferencial" ;;
+              3) tipo="copia_incremenental" ;;
+              *) echo -e "$(style bold ${COLORS[RED]})Tipo inválido.${ENDCOLOR}"; return ;;
+          esac
+
+          echo -e "\n$(style italic ${COLORS[LIGHT_CYAN]})Frecuencia:${ENDCOLOR}"
+          echo "1) Diario (2:00 AM)"
+          echo "2) Semanal (domingo 3:00 AM)"
+          echo "3) Mensual (día 1, 4:00 AM)"
+          echo "4) Personalizada"
+          prompt_color "$(style bold ${COLORS[WHITE]})Opción: ${ENDCOLOR}" frecuencia
+
+          case $frecuencia in
+              1) expresion="0 2 * * *" ;;
+              2) expresion="0 3 * * 0" ;;
+              3) expresion="0 4 1 * *" ;;
+              4)
+                 echo -e "$(style italic ${COLORS[YELLOW]})Introduce expresión cron (e.g. 30 1 * * 1):${ENDCOLOR}"
+                 prompt_color "$(style bold ${COLORS[WHITE]})Cron: ${ENDCOLOR}" expresion ;;
+              *) echo -e "$(style bold ${COLORS[RED]})Frecuencia inválida.${ENDCOLOR}"; return ;;
+          esac
+
+          # Preparar comando cron con log incluido
+          local log_file="$backup_base_dir/cron_$(timestamp).log"
+          local comando="$expresion bash $script_path $tipo >> $log_file 2>&1"
+
+          # Obtener crontab actual y comprobar duplicado
+          local crontab_temp
+          crontab_temp=$(mktemp)
+          sudo crontab -l 2>/dev/null > "$crontab_temp"
+
+          if grep -q "$script_path $tipo" "$crontab_temp"; then
+              echo -e "$(style bold ${COLORS[YELLOW]}) Ya existe una tarea para $tipo. No se añadirá duplicado.${ENDCOLOR}"
+          else
+              echo "$comando" >> "$crontab_temp"
+              sudo crontab "$crontab_temp"
+              echo -e "$(style bold ${COLORS[LIGHT_GREEN]})✓ Tarea añadida correctamente.${ENDCOLOR}"
+          fi
+
+          rm -f "$crontab_temp"
+          echo -e "$(style italic ${COLORS[LIGHT_CYAN]})Consulta:${ENDCOLOR} sudo crontab -l"
+          read -p "Pulsa una tecla para continuar..."
+      ;;
+      
+      # -------------------------------------- #
+      2) # LISTAR TAREAS EXISTENTES
+          echo -e "$(style bold ${COLORS[LIGHT_CYAN]})Tareas programadas en el sistema:${ENDCOLOR}\n"
+          sudo crontab -l 2>/dev/null || echo "No hay tareas programadas."
+          read -p "Pulsa una tecla para continuar..."
+      ;;
+
+      # -------------------------------------- #
+      3) # ELIMINAR TAREA
+          echo -e "$(style italic ${COLORS[LIGHT_CYAN]})Eliminación de una tarea programada:${ENDCOLOR}\n"
+          sudo crontab -l 2>/dev/null | nl
+          echo ""
+          prompt_color "$(style bold ${COLORS[WHITE]})Introduce el número de línea a eliminar: ${ENDCOLOR}" linea
+          
+          if [[ "$linea" =~ ^[0-9]+$ ]]; then
+              local tmpfile
+              tmpfile=$(mktemp)
+              sudo crontab -l 2>/dev/null | sed "${linea}d" > "$tmpfile"
+              sudo crontab "$tmpfile"
+              rm -f "$tmpfile"
+              echo -e "$(style bold ${COLORS[LIGHT_GREEN]})✓ Tarea eliminada correctamente.${ENDCOLOR}"
+          else
+              echo -e "$(style bold ${COLORS[RED]})Entrada no válida.${ENDCOLOR}"
+          fi
+          read -p "Pulsa una tecla para continuar..."
+      ;;
+      
+      # -------------------------------------- #
+      0) return 0 ;;
+      *) echo -e "$(style bold ${COLORS[RED]})Opción inválida.${ENDCOLOR}" ; sleep 1 ;;
+    esac
+}
+
 
 
 menu() {
@@ -253,7 +359,8 @@ menu() {
         echo -e "$(style bold ${COLORS[MAGENTA]})1${ENDCOLOR}) $(style italic ${COLORS[LIGHT_CYAN]})Copia completa${ENDCOLOR}"
         echo -e "$(style bold ${COLORS[MAGENTA]})2${ENDCOLOR}) $(style italic ${COLORS[LIGHT_CYAN]})Copia diferencial${ENDCOLOR}"
         echo -e "$(style bold ${COLORS[MAGENTA]})3${ENDCOLOR}) $(style italic ${COLORS[LIGHT_CYAN]})Copia incremental${ENDCOLOR}"
-        echo -e "$(style bold ${COLORS[MAGENTA]})4${ENDCOLOR}) $(style italic ${COLORS[LIGHT_GREEN]})Restaurar una copia${ENDCOLOR}"
+        echo -e "$(style bold ${COLORS[MAGENTA]})4${ENDCOLOR}) $(style italic ${COLORS[LIGHT_CYAN]})Restaurar una copia${ENDCOLOR}"
+        echo -e "$(style bold ${COLORS[MAGENTA]})5${ENDCOLOR}) $(style italic ${COLORS[LIGHT_CYAN]})Programar copia automática${ENDCOLOR}"
         echo -e "$(style bold ${COLORS[MAGENTA]})0${ENDCOLOR}) $(style italic ${COLORS[LIGHT_CYAN]})Salir${ENDCOLOR}"
         echo -e "====================="
 
@@ -268,6 +375,7 @@ menu() {
             2) copia_diferencial ;;
             3) copia_incremenental ;;
             4) restaurar_backup ;;
+            5) programar_backup ;;
             0) echo "¡Saliendo!"; exit 0 ;;
             *) echo "Opción inválida"; sleep 1 ;;
         esac
